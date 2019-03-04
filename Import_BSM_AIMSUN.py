@@ -87,19 +87,6 @@ def main():
         ################################ finish adding new raw data in the database ################################
         ########## to different 0.3 time frame 
             
-         
-def test_case():
-    db_file = "C:/Users/Administrator/Dropbox/BSM Project/MicroSim_scenario1/BSM_TSE.sqlite"
-    conn = sqlite3.connect(db_file) 
-    cur = conn.cursor()
-    data = (1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0)
-    cur.execute(''' INSERT INTO BSM(vehicle_id,simulation_time,section_id,segment_id,lane_number,
-                        current_pos_section, distance_end_section,world_pos_x,world_pos_y,world_pos_z,world_pos_x_rear,world_pos_y_rear,
-                        world_pos_z_rear,current_speed,distance_traveled,section_entrance_time,current_stop_time,speed_drop,cell_id)
-                        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''', data)      
-    #conn.commit() ##!!!!!!!!
-    conn.close()
-
 
 def initialize_ffs():
     address = "C:/Users/chen4416.AD/Dropbox/BSM Project/MicroSim_scenario1/Data1_vehicle_info_length_4649ft1.csv"
@@ -112,41 +99,6 @@ def calculate_cell_id(distance_traveled):
     #param: cell_length, distance_traveled#
     cell_id = math.ceil(distance_traveled/cell_length)
     return cell_id
-    
-
-                      
-def basic_road_parameters(address):
-    ffs = 0
-    road_length = 0
-    road_origin_X = 0
-    road_origin_Y = 0
-    sampled_id = [1,2,5,8,9]
-    sample_road_length = [0]*5
-    sample_road_origin_X = [0]*50
-    sample_road_origin_Y = [0]*5
-    
-    with open(address, 'r') as in_file:
-        in_file.readline()
-        for line in in_file:
-            eachLine = line.split(",")
-            speed = float(eachLine[5])
-            if (speed > ffs):
-                ffs = speed
-    all_data = pd.read_csv(address)
-    for i in range(len(sampled_id)):
-        target_id = sampled_id[i]
-        all_records = all_data[(all_data['VehID']==target_id)]
-        Xs = all_records.iloc[:,3]
-        Ys = all_records.iloc[:,4]
-        sample_road_length[i] = math.sqrt((Xs.iloc[-1]-Xs.iloc[0])**2+(Ys.iloc[-1]-Ys.iloc[0])**2)/5280   ### mile
-        sample_road_origin_X[i] = Xs.iloc[0]
-        sample_road_origin_Y[i] = Ys.iloc[0]
-    road_length = sum(sample_road_length)*1.0/len(sample_road_length)  
-    road_origin_X = sum(sample_road_origin_X)*1.0/len(sample_road_origin_X)
-    road_origin_Y = sum(sample_road_origin_Y)*1.0/len(sample_road_origin_Y)
-    #print sample_road_length
-    return [ffs, road_length, road_origin_X, road_origin_Y]
-
 
 
 if __name__ == '__main__':
