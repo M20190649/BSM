@@ -38,17 +38,32 @@ def sql_statement_BSM_table():
                 cell_id INT);'''
     return statement
 
+def sql_statement_cumulative_count(cell_number):
+    '''
+    store and return SQL code to generate a table to store the cumalative counts of vehicles
+    :param: cell_length
+    :return: statement: SQL code
+    '''
+    string_all_cells = "time_step_id INT,"
+    for i in range(cell_number+1):
+        string_all_cells = string_all_cells + "bound_"+str(i)+ " INT"
+        if (i < (cell_number)):
+            string_all_cells = string_all_cells + ","
+            
+    statement = "CREATE TABLE IF NOT EXISTS CUMUL_COUNT({0});".format(string_all_cells)
+    return statement
 
 def sql_statement_probe_state_table():
     '''
-    Store and return SQL code to generate a probe statetable in sqlite file
+    Store and return SQL code to generate a probe state table in sqlite file
     :param: None
     :return: statement: SQL code
     '''
     statement = '''CREATE TABLE IF NOT EXISTS PROBE_TRAFFIC_STATE(
-                time_step INT,
+                time_step_id INT,
                 cell_id INT,
-                flow REAL,
+                outflow REAL,
+                inflow REAL,
                 occupancy REAL,
                 mean_speed REAL,
                 max_speed REAL);'''
@@ -62,7 +77,7 @@ def sql_statement_parameter_table():
     :return: statement: SQL code
     '''
     statement = '''CREATE TABLE IF NOT EXISTS PARAMETERS(
-                time_step INT,
+                time_step_id INT,
                 cell_id INT,
                 capacity REAL,
                 ffs REAL,
@@ -103,6 +118,17 @@ def create_table_parameters(db_file):
         conn.close()
     except Error as e:
         print(e)
+        
+def create_table_cumulative_count(db_file, cell_number):
+    try:
+        conn = create_connection(db_file)
+        c = conn.cursor()
+        st = sql_statement_cumulative_count(cell_number)
+        c.execute(st)
+        conn.close()
+    except Error as e:
+        print(e)   
+        
  
 def create_connection(db_file):
     try:
@@ -161,8 +187,8 @@ def create_all_database_tables(db_file):
     create_table_BSM_data(db_file) 
     create_table_traffic_state(db_file)
     create_table_parameters(db_file)    
+    create_table_cumulative_count(db_file, 8)
     
-
  
 def main():
     #database = "D:\\BSM\\RichfieldSimulation\\Richfield_BSM_20190103_BSMdata_36818_20190125_130726.sqlite"
