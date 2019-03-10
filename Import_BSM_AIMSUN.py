@@ -17,22 +17,22 @@ import Import_sqlite3 as imSQL
 global start_time
 start_time = 300
 global end_time
-end_time = 1389.3
+end_time = 3000
 
 def main():
     #all_data = pd.read_csv(address)  use pandas package
     #list(all_data.columns.values)
-    address = "C:/Users/Administrator/Dropbox/BSM Project/MicroSim_scenario1/Data1_vehicle_info_length_4649ft1.csv"    
+    address = "C:/Users/Administrator/Dropbox/BSM Project/MicroSim_scenario1/Data1_vehicle_info_revised.csv"    
     #db_file = "C:\\Users\\Administrator\Dropbox\\BSM Project\\MicroSim_scenario1\\BSM_TSE.sqlite"   
-    db_file = "D:\\BSM\\BSM_TSE.sqlite"
+    db_file = "D:\\BSM\\BSM_TSE_3_9.sqlite"
 
-    end_time = 1389.3
+    end_time = 3000
     global time_step 
     time_step = 6
     global cell_length
     cell_length = initialize_ffs()*time_step*5280.0/3600     #in feet
     global counter
-    counter = 0
+    counter = 1
     link_length = 4650.0
     global cell_number
     cell_number = int(math.ceil(link_length/cell_length))
@@ -104,7 +104,7 @@ def main():
                  
 
 def initialize_ffs():
-    address = "C:/Users/Administrator/Dropbox/BSM Project/MicroSim_scenario1/Data1_vehicle_info_length_4649ft1.csv"
+    address = "C:/Users/Administrator/Dropbox/BSM Project/MicroSim_scenario1/Data1_vehicle_info_revised.csv"
     all_data = pd.read_csv(address)
     part_data = all_data.loc[all_data.iloc[:,1]<= (300)+3600]
     ffs = math.floor(max(part_data.iloc[:,13]))
