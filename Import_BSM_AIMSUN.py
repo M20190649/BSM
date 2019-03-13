@@ -4,7 +4,8 @@ Created on Thu Feb 14 17:27:40 2019
 
 @author: chen4416
 """
-
+import sys
+sys.path.append('<directory path of Import_BSM_AIMSUN.py>')
 import numpy as np
 import math
 import pandas as pd
@@ -12,30 +13,73 @@ import sqlite3
 import csv
 from sqlite3 import Error
 import Import_sqlite3 as imSQL
+import Parameter_estimation as pe
+import matplotlib.pyplot as plt
 
 
 global start_time
 start_time = 300
 global end_time
 end_time = 3000
+global time_step 
+time_step = 6
+global link_length
+link_length = 4650.0
 
 def main():
-    #all_data = pd.read_csv(address)  use pandas package
-    #list(all_data.columns.values)
-    address = "C:/Users/Administrator/Dropbox/BSM Project/MicroSim_scenario1/Data1_vehicle_info_revised.csv"    
-    #db_file = "C:\\Users\\Administrator\Dropbox\\BSM Project\\MicroSim_scenario1\\BSM_TSE.sqlite"   
-    db_file = "D:\\BSM\\BSM_TSE_3_9.sqlite"
-
-    end_time = 3000
-    global time_step 
-    time_step = 6
-    global cell_length
-    cell_length = initialize_ffs()*time_step*5280.0/3600     #in feet
     global counter
     counter = 1
-    link_length = 4650.0
+    global cell_length
+    cell_length = pe.initialize_ffs()*time_step*5280.0/3600     #in feet
     global cell_number
-    cell_number = int(math.ceil(link_length/cell_length))
+    cell_number = int(math.ceil(link_length/cell_length))    #in feet
+    #all_data = pd.read_csv(address)  use pandas package
+    #list(all_data.columns.values)
+    boundaries = calculate_bound_locations(link_length, cell_length, cell_number)
+    link_lane_number = 3
+    
+    ####### initialize the Kalman Filter #######    
+    ####### set up matrices to store data #######
+    penetration_rate = 1.0/11
+    total_time_steps = int((end_time - start_time)/time_step)
+    KF_occ = np.zeros(shape=(total_time_steps, cell_number))
+    mea_occ = np.zeros(shape=(total_time_steps, cell_number))
+    pre_occ = np.zeros(shape=(total_time_steps, cell_number))
+    KF_flow = np.zeros(shape=(total_time_steps, cell_number+1))
+    mea_flow = np.zeros(shape=(total_time_steps, cell_number+1))
+    KF_capacity = np.zeros(shape=(total_time_steps, 1))
+    KF_capacity[0,0] = 1300*link_lane_number
+    KF_ffs = np.zeros(shape=(total_time_steps, 1))
+    KF_ffs[0,0] = 70
+    KF_bws = np.zeros(shape=(total_time_steps, 1))
+    KF_bws[0,0] = 23.4
+    average_car_length = pe.get_average_car_length()
+    jam_density = int(5280/(average_car_length*1.5))*link_lane_number
+    InputFlowRate = 0
+
+    ####### parameters for the kalman filter #######
+    Q_occ = 0.2
+    Q_cap = 0.1
+    Q_ffs = 0.1
+    Q_sws = 0.1
+    P_cap = 0.8
+    P_ffs = 0.8
+    P_sws = 0.8
+    P_input = 0.9
+    R_occ = 0.75
+    R_cap = 0.1
+    R_ffs = 0.1
+    R_sws = 0.5
+    KG_cap = 0.5
+    KG_ffs = 0.5
+    KG_sws = 0.5
+    P_occ = np.zeros(shape=(total_time_steps,cell_number))
+    P_occ[0,:] = [0.9]*cell_number   
+    
+    address = "C:/Users/chen4416.AD/Dropbox/BSM Project/MicroSim_scenario1/Data1_vehicle_info_revised.csv"    
+    #db_file = "C:\\Users\\Administrator\Dropbox\\BSM Project\\MicroSim_scenario1\\BSM_TSE.sqlite"   
+    db_file = "D:\\BSM\\probe_vehicles_BSM_3_12.sqlite"
+    save_to = "D:\\BSM\\"
     ############### make sure the raw data has been ordered by time frames ###############
     with open(address,'r') as data_csv:
         raw_data = list(csv.reader(data_csv,delimiter=','))
@@ -52,8 +96,6 @@ def main():
                 for eachLine in raw_data[counter:]:
                     #print(eachLine[1])
                     simulation_time = float(eachLine[1])
-                    #if (round(simulation_time,1) <= round(t,1).item()):                                                
-                        #print("simulation_time vs t:", simulation_time,"vs",round(t,1))
                     if (round(simulation_time,1) == round(t,1)):
                         counter = counter+1 ## it is not the problem of sqlite                        
                         vehicle_id = int(eachLine[0])
@@ -74,6 +116,7 @@ def main():
                         section_entrance_time = float(eachLine[15])
                         current_stop_time = float(eachLine[16])
                         speed_drop = 0
+                        #speed_drop = pe.get_speed_drop(conn, simulation_time, vehicle_id, current_speed)
                         time_step_id = int(math.ceil((simulation_time-start_time)/time_step))
                         cell_id = int(calculate_cell_id(abs(current_pos_section)))
                         data = (vehicle_id,simulation_time,section_id,segment_id,lane_number,current_pos_section,distance_end_section,\
@@ -93,22 +136,206 @@ def main():
                         print(e) 
                 conn.commit()
                 
-                boundaries = calculate_bound_locations(link_length, cell_length, cell_number)
-                add_data_to_PTS_table_time_space_diagram_method(conn, round(t,1), start_time, boundaries, 5)  ## spatial buffer is 5 ft
-                
-                
-            
+                ##### adjust probe traffic state table #####
+                ########start to apply Kalman filter#######
+                if ((round(t,1) % time_step) == 0): 
+                    
+                    ##### get estimation from the function
+                    ##### get input flow #####
+                    if (round(t,1) == start_time):
+                        [mean_speeds, max_speeds, probe_traffic_states] = add_data_to_PTS_table_time_space_diagram_method(conn, round(t,1), start_time, boundaries, 3)  ## spatial buffer is 5 ft                    
+                        occ_measurement = probe_traffic_states[0][1:]
+                        flow_measurement = probe_traffic_states[1][:]   
+                        mea_occ[0][:] = occ_measurement
+                        mea_flow[0][:] = flow_measurement
+                        
+                        R_input = rand(0.1)
+                        InputFlowRate = flow_measurement[0]/penetration_rate + R_input
+                        #InputFlowRate = 1/penetration_rate + R_input
+                        KF_occ[0,:] = mea_occ[0][:] 
+                        KF_flow[0,:] = mea_flow[0][:]
+                        #P_occ[1,:] = P_occ[0,:]
+                        
+                    else:
+                        i = int((round(t,1)-start_time)*1.0/time_step)
+                        print("Predict time step: ", i)
+                        [mean_speeds, max_speeds, probe_traffic_states] = add_data_to_PTS_table_time_space_diagram_method(conn, round(t,1), start_time, boundaries, 3)  ## spatial buffer is 5 ft
+                        
+                        
+                        occ_measurement = probe_traffic_states[0][1:]
+                        flow_measurement = probe_traffic_states[1][:]
+
+                        mea_occ[i][:] = occ_measurement
+                        mea_flow[i][:] = flow_measurement
+                        
+
+                        R_input = rand(0.1)
+                        InputFlowRate_pre = InputFlowRate + R_input
+                        InputFlowRate_mea = flow_measurement[0]/penetration_rate
+                        #InputFlowRate_mea = 1/penetration_rate
+                        KG_input = P_input/(P_input+abs(R_input))
+                        P_input = P_input - KG_input*P_input
+                        InputFlowRate = max(0,InputFlowRate_pre + KG_input*(InputFlowRate_mea-InputFlowRate_pre))
+                        #print("Time",i,"InputFlowRate: ",InputFlowRate)        
+                        print("input flow: ", InputFlowRate)
+                        
+                        Q_pre = KF_capacity[i-1,0] + rand(Q_cap)   ### use the parameter values in the last time step
+                        ffspeed_pre = KF_ffs[i-1,0] + rand(Q_ffs)
+                        swspeed_pre = KF_ffs[i-1,0] + rand(Q_sws)
+                        
+                        if ((mean_speeds.mean() != -1)& (max_speeds.mean() != -1)): 
+                            #print("mean speed != -1")
+                            #Q_mea = 3600*link_lane_number/pe.get_small_headways(conn, t) + rand(R_cap)
+                           
+                            #swspeed_mea= KF_bws[i-1][0] + rand(R_sws)
+                            
+                            low_speed_cell = np.zeros(cell_number)
+                            
+                            for cell in range(cell_number):  ### to determine in what state the link is 
+                                if ((mean_speeds[cell] < 0.8*ffspeed_pre)&(mean_speeds[cell] > 0)):
+                                    low_speed_cell[cell] =1
+                                                               
+
+                            if (sum(low_speed_cell) >= 4): ### under congestion condition
+                                print("Estimate shockwave speed first under speeds of")
+                                ffspeed_mea = max(max_speeds) + rand(R_ffs)
+                                reaction_time = pe.get_reaction_time(conn,t) 
+                                if (reaction_time > 0):
+                                    #swspeed_mea = average_car_length*0.6818/reaction_time ########################
+                                    swspeed_mea = (average_car_length+2)*0.6818/0.8 
+                                    Q_mea = jam_density/((1.0/KF_ffs[i-1,0])+(1.0/swspeed_mea)) + rand(R_cap)
+                                    swspeed_mea =  max(0,swspeed_mea + rand(R_sws))
+                                        
+                                    KG_cap = P_cap/(P_cap+R_cap)
+                                    KG_ffs = P_ffs/(P_ffs+R_ffs)
+                                    KG_sws = P_sws/(P_sws+R_sws)
+                                                
+                                    P_cap =  P_cap - KG_cap*P_cap    
+                                    P_ffs =  P_ffs - KG_ffs*P_ffs
+                                    P_sws =  P_sws - KG_sws*P_sws    
+                                    
+                                    KF_capacity[i,0] = Q_pre + KG_cap*(Q_mea-Q_pre)
+                                    KF_ffs[i,0] = ffspeed_pre + KG_ffs*(ffspeed_mea-ffspeed_pre)            
+                                    KF_bws[i,0] = swspeed_pre + KG_sws*(swspeed_mea-swspeed_pre)   
+                            
+                                else:
+                                    KF_capacity[i,0] = Q_pre
+                                    KF_ffs[i,0] = ffspeed_pre         
+                                    KF_bws[i,0] = swspeed_pre
+                                    
+                            else:
+                                small_headway = pe.get_small_headways(conn, t)
+                                ffspeed_mea = ffspeed_pre
+                                if (small_headway >0):
+                                    Q_mea = 3600*link_lane_number/small_headway + rand(R_cap)
+                                    swspeed_mea = max(0,Q_mea/(jam_density-(Q_mea/ffspeed_mea)) + rand(R_sws))
+                                            
+                                    KG_cap = P_cap/(P_cap+R_cap)
+                                    KG_ffs = P_ffs/(P_ffs+R_ffs)
+                                    KG_sws = P_sws/(P_sws+R_sws)
+                                                
+                                    P_cap =  P_cap - KG_cap*P_cap    
+                                    P_ffs =  P_ffs - KG_ffs*P_ffs
+                                    P_sws =  P_sws - KG_sws*P_sws    
+                                    
+                                    KF_capacity[i,0] = Q_pre + KG_cap*(Q_mea-Q_pre)
+                                    KF_ffs[i,0] = ffspeed_pre + KG_ffs*(ffspeed_mea-ffspeed_pre)            
+                                    KF_bws[i,0] = swspeed_pre + KG_sws*(swspeed_mea-swspeed_pre)   
+                                
+                                else:
+                                    KF_capacity[i,0] = Q_pre
+                                    KF_ffs[i,0] = ffspeed_pre         
+                                    KF_bws[i,0] = swspeed_pre
+
+
+                        else:
+                            KF_capacity[i,0] = Q_pre
+                            KF_ffs[i,0] = ffspeed_pre         
+                            KF_bws[i,0] = swspeed_pre
+                           
+    
+                    
+                        for j in range(cell_number+1):
+                            if (j == 0):    
+                                KF_flow[i][j] = InputFlowRate
+                                
+                            elif (j == cell_number):
+                                KF_flow[i][j] = min(KF_occ[i-1][j-1], KF_capacity[i][0]*time_step/3600)
+                                KF_flow[i][j] = max(0, KF_flow[i][j])
+                                
+                            else:
+                                Capacity1 = KF_capacity[i][0]
+                                ffspeed1 = KF_ffs[i][0]
+                                swspeed1 = KF_bws[i][0]
+                                KF_flow[i][j] = min(KF_occ[i-1][j-1], Capacity1*time_step/3600, (ffspeed1*1.0/swspeed1)*(jam_density*cell_length/5280-KF_occ[i-1][j]))
+                                KF_flow[i][j] = max(0, KF_flow[i][j])
+                                
+    
+                        for j in range(cell_number):  ##the ith cell has j = i-1
+                            pre_occ[i][j] = KF_occ[i-1][j] + KF_flow[i][j] - KF_flow[i][j+1] + abs(rand(Q_occ))
+                            if (pre_occ[i][j]<0):
+                                print ( "Measurement errors: negative occupancy ")
+                            if (mean_speeds[j] > 0):                                    
+                                if (mean_speeds[j] > KF_ffs[i][0]*0.9):
+                                    critical_occ = KF_capacity[i,0]/KF_ffs[i][0]*0.9
+                                    Occ_mea = max(0, 0.5*critical_occ + abs(rand(R_occ)))
+                                elif (mean_speeds[j] > (KF_capacity[i,0]/(jam_density-(KF_capacity[i,0]/KF_bws[i,0])))):
+                                    Occ_mea = max(0,KF_capacity[i,0]/mean_speeds[j] + abs(rand(R_occ)))
+                                else:
+                                    Occ_mea = max(0,jam_density/(1+(KF_ffs[i][0]/KF_bws[i,0]))+abs(rand(R_occ)))
+                            else:
+                                Occ_mea = max( 0, KF_occ[i-1][j] + abs(rand(R_occ)) )
+                            #Occ_mea = max(0, occ_measurement[j] + abs(rand(R_occ))) 
+                            P_occ[i][j] =   P_occ[i-1][j] + abs(rand(Q_occ))
+                            if (P_occ[i][j] <0):
+                                print("##########################ERROR################################")
+                            KalmanGain = max(0, P_occ[i][j]*1.0/(P_occ[i][j]+ abs(rand(R_occ))))
+                            
+                            KF_occ[i][j] =  max(0,(1-KalmanGain)*pre_occ[i][j]+ KalmanGain*Occ_mea)                
+                            P_occ[i][j] = P_occ[i][j] - KalmanGain*P_occ[i][j]
+
+
         print("all row number: ", counter)
         ################################ finish adding new raw data in the database ################################
-        ########## to different 0.3 time frame 
-                 
+        ########## to different 0.1 time frame 
+        try:
+            occ_file = save_to+"\\KF_occ_3_12.csv"
+            np.savetxt(occ_file, KF_occ,delimiter=',')
+            flow_file = save_to+"\\KF_flow_3_12.csv"
+            np.savetxt(flow_file,KF_flow,delimiter=',')
+            parameter_file = save_to+"\\parameters_3_12.csv"
+            parameters = np.zeros(shape = (total_time_steps, 3))
+            parameters[:,0]= KF_capacity[:,0]
+            parameters[:,1]= KF_ffs[:,0]
+            parameters[:,2]= KF_bws[:,0]
+            np.savetxt(parameter_file, parameters,delimiter=',')
+            
+            for pl in range(cell_number):
+                fig  = plt.figure(figsize=(6,3.5),dpi=100)
+                print("################ Cell",pl+1,"##################")
+                plt.plot(KF_occ[:, pl],linewidth=0.8)
+                plt.plot(mea_occ[:, pl]*(1.0/penetration_rate),linewidth=0.6)
+                plt.xlabel('time step')
+                plt.ylabel('occupancy (veh)')
+                plt.legend(['Estimated Occupancy','Measured Occupancy'])
+                plt.show(fig)
+        except Error as e:
+            for pl in range(cell_number):
+                if (pl == 2):
+                    fig  = plt.figure(figsize=(6,3.5),dpi=100)
+                    print("################ Cell",pl+1,"##################")
+                    plt.plot(KF_occ[:, pl],linewidth=0.8)
+                    plt.plot(mea_occ[:, pl]*(1.0/penetration_rate),linewidth=0.6)
+                    plt.xlabel('time step')
+                    plt.ylabel('occupancy (veh)')
+                    plt.legend(['Estimated Occupancy','Measured Occupancy'])
+                    plt.show(fig)
+                
+def rand(y):
+    return np.random.normal(0,y)
 
-def initialize_ffs():
-    address = "C:/Users/Administrator/Dropbox/BSM Project/MicroSim_scenario1/Data1_vehicle_info_revised.csv"
-    all_data = pd.read_csv(address)
-    part_data = all_data.loc[all_data.iloc[:,1]<= (300)+3600]
-    ffs = math.floor(max(part_data.iloc[:,13]))
-    return ffs
+
+
 
 def calculate_cell_id(distance_traveled):
     #param: cell_length, distance_traveled#
@@ -138,9 +365,9 @@ def add_data_to_PTS_table_time_space_diagram_method(conn, time, START_TIME, boun
         bounds = boundaries
         cur = conn.cursor()  
         sql_select_occ = '''SELECT cell_id,COUNT(*) FROM BSM
-        WHERE simulation_time BETWEEN ? AND ?
+        WHERE simulation_time = ?
         GROUP BY cell_id'''
-        sql_values = (round(current_time,1)-0.05,round(current_time,1)+0.05)
+        sql_values = (round(current_time,1),)
         cur.execute(sql_select_occ, sql_values)
         getdata = list(cur.fetchall())
         for each_item in getdata:
@@ -155,10 +382,15 @@ def add_data_to_PTS_table_time_space_diagram_method(conn, time, START_TIME, boun
             AND time_step_id = ?
             GROUP BY vehicle_id'''
             sql_values = (each_bound-epsilon,each_bound+epsilon,time_step_id)
+            if (i==0):
+                sql_values = (-5,5,time_step_id)
             cur.execute(sql_select_occ, sql_values)
             getdata = list(cur.fetchall())
             current_probe_traffic_state[1][i] = len(getdata)
-                
+        
+        all_mean_speed = np.zeros(cell_number)
+        all_max_speed = np.zeros(cell_number)
+        
         for i in range(cell_number):
             cell_id = i+1                           
             ##### get speeds                
@@ -178,9 +410,16 @@ def add_data_to_PTS_table_time_space_diagram_method(conn, time, START_TIME, boun
                 if (getspeed[0][2]  > 0):
                     mean_speed = getspeed[0][0]/getspeed[0][2]*1.0
                     max_speed = getspeed[0][1]
+                    
+                    all_mean_speed[i] = mean_speed
+                    all_max_speed[i] = max_speed
                 else:
-                    mean_speed = -1
-                    max_speed = -1
+                    mean_speed =  -1
+                    max_speed =  -1
+
+                    all_mean_speed[i] = mean_speed
+                    all_max_speed[i] = max_speed                    
+                    
                 #print(mean_speed,max_speed,getspeed[0][2])
                 sql_insert = '''INSERT INTO PROBE_TRAFFIC_STATE(time_step_id, cell_id, outflow, inflow, occupancy, mean_speed, max_speed)
                 VALUES(?,?,?,?,?,?,?)'''
@@ -190,19 +429,21 @@ def add_data_to_PTS_table_time_space_diagram_method(conn, time, START_TIME, boun
             except Error as e:
                 print(e) 
         conn.commit()
-        
+    
+    return [all_mean_speed, all_max_speed, current_probe_traffic_state]
         
 
         
     #### get the 
     
 def test_sql_select_occ():
-    db_file = "D:\\BSM\\BSM_TSE.sqlite"
-    current_time = 306.0
+    db_file = "D:\\BSM\\Microsim_output_3_8_2019\\Richfield_BSM_20190103_BSMdata_36818_20190305_165124_1.sqlite"
+    current_time = 307.0
+    cell_number = 7
     current_probe_traffic_state = np.zeros(shape=(2, cell_number + 1))  ### one cell for storing input flow
     with sqlite3.connect(db_file) as conn:
         cur = conn.cursor()  
-        sql_select_occ = '''SELECT cell_id,COUNT(*) FROM BSM
+        sql_select_occ = '''SELECT cell_id,COUNT(*) FROM vehicle_info
         WHERE simulation_time = ?
         GROUP BY cell_id'''
         sql_values = (round(current_time,1),)
@@ -212,20 +453,24 @@ def test_sql_select_occ():
             item_id = each_item[0]
             item_occ = each_item[1]
             current_probe_traffic_state[0][item_id] = item_occ
-        print(current_probe_traffic_state )
+        print(current_probe_traffic_state)
         
     
 def test_sql_select_flow():
-    db_file = "D:\\BSM\\BSM_TSE.sqlite"
+    db_file = "D:\\BSM\\Microsim_output_3_8_2019\\Richfield_BSM_20190103_BSMdata_36818_20190305_165124_1.sqlite"
     time_step_id = 1
-    bounds = [0.0, 651.2, 1302.4, 1953.6, 2604.8, 3256.0, 3907.2, 4558.4, 4650]
-    epsilon = 5
+    link_length = 4650
+    cell_length = pe.initialize_ffs()*time_step*5280.0/3600 
+    cell_number = int(math.ceil(link_length/cell_length))
+    bounds =  calculate_bound_locations(4650, cell_length, cell_number)
+    #bounds = [0.0, 651.2, 1302.4, 1953.6, 2604.8, 3256.0, 3907.2, 4558.4, 4650]
+    epsilon = 6
     current_probe_traffic_state = np.zeros(shape=(2, cell_number + 1)) 
     with sqlite3.connect(db_file) as conn:
         cur = conn.cursor()  
         for i in range(len(bounds)):
             each_bound = bounds[i]
-            sql_select_occ = '''SELECT vehicle_id FROM BSM
+            sql_select_occ = '''SELECT vehicle_id FROM vehicle_info
             WHERE current_pos_section BETWEEN ? AND ?
             AND time_step_id = ?
             GROUP BY vehicle_id'''

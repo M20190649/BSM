@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+ # -*- coding: utf-8 -*-
 """
 Created on Fri Mar 01 14:53:15 2019
 
@@ -192,7 +192,7 @@ def create_all_database_tables(db_file):
  
 def main():
     #database = "D:\\BSM\\RichfieldSimulation\\Richfield_BSM_20190103_BSMdata_36818_20190125_130726.sqlite"
-    db_file = "D:\\BSM\\BSM_TSE.sqlite"
+    db_file = "D:\\BSM\\probe_vehicles_BSM_3_12.sqlite"
     create_all_database_tables(db_file)
  
 if __name__ == '__main__':
