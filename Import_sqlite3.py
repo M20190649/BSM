@@ -86,6 +86,22 @@ def sql_statement_parameter_table():
         
     return statement  
 
+def sql_statement_1min_table():
+    '''
+    Store and return SQL code to generate a table for traffic flow parameters in sqlite file
+    :param: None
+    :return: statement: SQL code
+    '''
+    statement = '''CREATE TABLE IF NOT EXISTS ONE_MIN_STATES(
+                one_min_id INT,
+                cell_id INT,
+                occ REAL,
+                flow REAL,
+                mean_speed REAL,
+                max_speed REAL);'''
+        
+    return statement  
+
 
 def create_table_BSM_data(db_file):
     try:
@@ -129,7 +145,16 @@ def create_table_cumulative_count(db_file, cell_number):
     except Error as e:
         print(e)   
         
- 
+def create_table_one_min_states(db_file):
+    try:
+        conn = create_connection(db_file)
+        c = conn.cursor()
+        st = sql_statement_1min_table()
+        c.execute(st)
+        conn.close()
+    except Error as e:
+        print(e)   
+    
 def create_connection(db_file):
     try:
         conn = sqlite3.connect(db_file)
@@ -186,13 +211,14 @@ def select_vehicle_by_ID(conn, Vehicle_ID):
 def create_all_database_tables(db_file):
     create_table_BSM_data(db_file) 
     create_table_traffic_state(db_file)
-    create_table_parameters(db_file)    
-    create_table_cumulative_count(db_file, 8)
+    create_table_one_min_states(db_file)
+    #create_table_parameters(db_file)    
+    #create_table_cumulative_count(db_file, 8)
     
  
 def main():
     #database = "D:\\BSM\\RichfieldSimulation\\Richfield_BSM_20190103_BSMdata_36818_20190125_130726.sqlite"
-    db_file = "D:\\BSM\\probe_vehicles_BSM_3_12.sqlite"
+    db_file = "D:\\BSM\\test1_3_13\\probe_vehicles_BSM_3_14.sqlite"
     create_all_database_tables(db_file)
  
 if __name__ == '__main__':

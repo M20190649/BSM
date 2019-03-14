@@ -47,8 +47,8 @@ def get_bws_regression(conn,cell_number,time_step, speed_threshold, density_thre
     
 
 def test_get_bws_regression(estimated_capacity, ffs):
-    db_file = "D:\BSM\probe_vehicles_BSM_3_12.sqlite"
-    cell_number = 8
+    db_file = "D:\\BSM\\tes1_3_13\\probe_vehicles_BSM_3_14.sqlite"
+    cell_number = 3
     time_step = 6
     speed_threshold = 0.8*ffs
     density_threshold = estimated_capacity*1.0/ffs
@@ -56,13 +56,12 @@ def test_get_bws_regression(estimated_capacity, ffs):
         cur = conn.cursor()
         sql_get_data_point = '''
         SELECT time_step_id, cell_id, outflow, occupancy, mean_speed 
-        FROM PROBE_TRAFFIC_STATE 
+        FROM ONE_MIN_STATES 
         WHERE cell_id BETWEEN 1 AND ?
         AND mean_speed < ?
         AND mean_speed > 0
-        AND occupancy > ?
         '''
-        sql_values = (cell_number-1,speed_threshold, 4) ### why it should be tuple even it only needs one parameter
+        sql_values = (cell_number-1,speed_threshold) ### why it should be tuple even it only needs one parameter
         cur.execute(sql_get_data_point, sql_values)
         df = pd.DataFrame(list(cur.fetchall()))
         df.columns = ['time_step_id', 'cell_id', 'outflow', 'occupancy', 'mean_speed']
@@ -70,7 +69,7 @@ def test_get_bws_regression(estimated_capacity, ffs):
         Y = df.iloc[:,2].values*(3600.0/time_step)
         reg = np.polyfit(X,Y,deg = 1)
         slope = reg[0]
-        if slope > -10:
+        if slope > -8:
             print("bad estimated slope", slope)
         else:
             return slope
@@ -122,7 +121,7 @@ def plot_trajectory_vehicles():
         plt.show(fig)
     
 def get_small_headways(conn, current_time):
-    db_file = "D:\BSM\probe_vehicles_BSM_3_12.sqlite"  
+    db_file = "D:\\BSM\\test1_3_13\\probe_vehicles_BSM_3_14.sqlite"  
     time_range = (current_time-6,  current_time)
     min_headways = []
     with sqlite3.connect(db_file) as conn:
