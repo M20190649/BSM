@@ -1,0 +1,17 @@
+Steps of traffic state data extraction:
+
+1. Run the simulation including 100% probe vehicles and get a Sqlite database.
+2. Save "vehicle_info" table in the Sqlite database as a CSV file.
+3. Open python script "1_Create_Database". 
+4. At the end of the python script, modify the directory of the dataset, run this script
+5. Close python script "1_Create_Database".
+6. Open python script "2_generate_traffic_state".
+7. In line 17, set "start_time".
+   In line 19, set "end_time".
+   In line 21, set "time_step".
+   In line 23, set "link_length".
+   In line 37, set "link_lane_number".
+   In line 27, set the directory of the input CSV file.
+   In line 43, set the directory of the output database file, which is the dataset created in step 4.
+8. Run python script "2_generate_traffic_state".
+9. After several hours, the extracted data is store in the created SQLite database.
