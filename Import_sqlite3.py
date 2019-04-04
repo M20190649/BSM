@@ -70,6 +70,21 @@ def sql_statement_probe_state_table():
         
     return statement     
 
+def sql_statement_probe_state_time_space_table():
+    '''
+    Store and return SQL code to generate a probe state table in sqlite file
+    :param: None
+    :return: statement: SQL code
+    '''
+    statement = '''CREATE TABLE IF NOT EXISTS PROBE_TRAFFIC_STATE_TS(
+                time_step_id INT,
+                cell_id INT,
+                flow REAL,
+                density REAL,
+                space_mean_speed REAL);'''
+        
+    return statement   
+
 def sql_statement_parameter_table():
     '''
     Store and return SQL code to generate a table for traffic flow parameters in sqlite file
@@ -102,6 +117,20 @@ def sql_statement_1min_table():
         
     return statement  
 
+def sql_statement_1min_table_new():
+    '''
+    Store and return SQL code to generate a table for traffic flow parameters in sqlite file
+    :param: None
+    :return: statement: SQL code
+    '''
+    statement = '''CREATE TABLE IF NOT EXISTS ONE_MIN_STATES_NEW(
+                one_min_id INT,
+                cell_id INT,
+                density REAL,
+                flow REAL,
+                mean_space_speed REAL);'''
+        
+    return statement  
 
 def create_table_BSM_data(db_file):
     try:
@@ -112,7 +141,7 @@ def create_table_BSM_data(db_file):
         c.execute(st)
         conn.close()    
     except Error as e:
-        print(e)
+        print e
     
 def create_table_traffic_state(db_file):
 
@@ -124,6 +153,17 @@ def create_table_traffic_state(db_file):
         conn.close()
     except Error as e:
         print(e)
+
+def create_table_traffic_state_time_space(db_file):
+
+    try:
+        conn = create_connection(db_file)
+        c = conn.cursor()
+        st = sql_statement_probe_state_time_space_table()
+        c.execute(st)
+        conn.close()
+    except Error as e:
+        print(e)        
 
 def create_table_parameters(db_file):
     try:
@@ -154,7 +194,17 @@ def create_table_one_min_states(db_file):
         conn.close()
     except Error as e:
         print(e)   
-    
+
+def create_table_one_min_states_new(db_file):
+    try:
+        conn = create_connection(db_file)
+        c = conn.cursor()
+        st = sql_statement_1min_table_new()
+        c.execute(st)
+        conn.close()
+    except Error as e:
+        print(e)   
+   
 def create_connection(db_file):
     try:
         conn = sqlite3.connect(db_file)
@@ -212,13 +262,15 @@ def create_all_database_tables(db_file):
     create_table_BSM_data(db_file) 
     create_table_traffic_state(db_file)
     create_table_one_min_states(db_file)
+    create_table_traffic_state_time_space(db_file)
+    create_table_one_min_states_new(db_file)
     #create_table_parameters(db_file)    
     #create_table_cumulative_count(db_file, 8)
     
  
 def main():
     #database = "D:\\BSM\\RichfieldSimulation\\Richfield_BSM_20190103_BSMdata_36818_20190125_130726.sqlite"
-    db_file = "D:\\BSM\\test1_3_13\\probe_vehicles_BSM_3_14.sqlite"
+    db_file = "D:\\BSM\\test2_3_20\\probe_vehicles_BSM_3_20.sqlite"
     create_all_database_tables(db_file)
  
 if __name__ == '__main__':
